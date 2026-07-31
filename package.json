@@ -1,0 +1,20 @@
+{
+  "name": "sketchspace-mern",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Professional collaborative SketchSpace teaching whiteboard using React, Node, Express, Socket.io, and MongoDB.",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace server\" \"npm run dev --workspace client\"",
+    "dev:client": "npm run dev --workspace client",
+    "dev:server": "npm run dev --workspace server",
+    "build": "npm run build --workspace server && npm run build --workspace client",
+    "typecheck": "npm run typecheck --workspace server && npm run typecheck --workspace client"
+  },
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
