@@ -9,6 +9,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  SlidersHorizontal,
   Sun,
   Timer
 } from "lucide-react";
@@ -29,7 +30,8 @@ import type {
   RoomPermissions,
   RoomState,
   Stroke,
-  User
+  User,
+  UserRole
 } from "./types";
 
 type RoomResponse = {
@@ -68,6 +70,12 @@ const defaultPermissions: RoomPermissions = {
   roomLocked: false,
   followTeacherView: false,
   showStudentCursors: true
+};
+
+const roleLabels: Record<UserRole, string> = {
+  host: "Owner",
+  editor: "Editor",
+  viewer: "Viewer"
 };
 
 function formatCountdown(totalSeconds: number) {
@@ -246,7 +254,13 @@ function drawStrokeToContext(context: CanvasRenderingContext2D, width: number, h
   context.lineCap = "round";
   context.lineJoin = "round";
   context.lineWidth = stroke.size;
-  context.strokeStyle = stroke.tool === "eraser" ? "#ffffff" : stroke.color;
+
+  if (stroke.tool === "eraser") {
+    context.globalCompositeOperation = "destination-out";
+    context.strokeStyle = "rgba(0, 0, 0, 1)";
+  } else {
+    context.strokeStyle = stroke.color;
+  }
 
   const firstPoint = stroke.points[0];
   const lastPoint = stroke.points[stroke.points.length - 1];
@@ -327,6 +341,7 @@ function drawStrokeToContext(context: CanvasRenderingContext2D, width: number, h
 
 export default function App() {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const headerActionsRef = useRef<HTMLDivElement | null>(null);
   const [user, setUser] = useState<User>(() => getStoredUser());
   const [room, setRoom] = useState<RoomState | null>(null);
   const [settings, setSettings] = useState(defaultSettings);
@@ -340,7 +355,35 @@ export default function App() {
   const [notes, setNotes] = useState("");
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
   const [isClearConfirmOpen, setIsClearConfirmOpen] = useState(false);
+  const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false);
+  const [isRoomSettingsOpen, setIsRoomSettingsOpen] = useState(false);
   const [textRequestId, setTextRequestId] = useState(0);
+
+  function toggleActionsMenu() {
+    setIsActionsMenuOpen((open) => !open);
+    setIsRoomSettingsOpen(false);
+  }
+
+  function toggleRoomSettings() {
+    setIsRoomSettingsOpen((open) => !open);
+    setIsActionsMenuOpen(false);
+  }
+
+  useEffect(() => {
+    if (!isActionsMenuOpen && !isRoomSettingsOpen) {
+      return;
+    }
+
+    function handleClickOutside(event: MouseEvent) {
+      if (headerActionsRef.current && !headerActionsRef.current.contains(event.target as Node)) {
+        setIsActionsMenuOpen(false);
+        setIsRoomSettingsOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isActionsMenuOpen, isRoomSettingsOpen]);
 
   const activePageId = room?.activePageId ?? defaultPage.id;
   const activePage = room?.pages.find((page) => page.id === activePageId) ?? defaultPage;
@@ -872,7 +915,19 @@ export default function App() {
     }
 
     drawBoardTemplate(context, canvas.width, canvas.height, boardTemplate);
-    activePageStrokes.forEach((stroke) => drawStrokeToContext(context, canvas.width, canvas.height, stroke));
+
+    const strokesLayer = document.createElement("canvas");
+    strokesLayer.width = canvas.width;
+    strokesLayer.height = canvas.height;
+    const strokesContext = strokesLayer.getContext("2d");
+
+    if (!strokesContext) {
+      setStatus("Could not export this canvas.");
+      return;
+    }
+
+    activePageStrokes.forEach((stroke) => drawStrokeToContext(strokesContext, canvas.width, canvas.height, stroke));
+    context.drawImage(strokesLayer, 0, 0);
 
     const link = document.createElement("a");
     link.download = `sketchspace-${room.roomCode}.png`;
@@ -919,11 +974,34 @@ export default function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">Room</p>
-          <h1>{room.roomCode}</h1>
+        <div className="topbar-left">
+          <span className="brand-wordmark">SketchSpace</span>
+          <span className="topbar-divider" aria-hidden />
+          <div className="room-title-field">
+            <label htmlFor="room-title">Board</label>
+            <input
+              disabled={!isHost}
+              id="room-title"
+              maxLength={64}
+              onBlur={(event) => updateRoomSettings({ roomTitle: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                }
+              }}
+              placeholder="Untitled Board"
+              defaultValue={room.roomTitle}
+            />
+          </div>
+          <span className="role-badge">{roleLabels[currentRole]}</span>
         </div>
-        <div className="topbar-actions">
+
+        <div className="topbar-actions" ref={headerActionsRef}>
+          <span className="connection-status">
+            <span className="status-dot" aria-hidden />
+            {status}
+          </span>
+
           <div className={timerSeconds === 0 ? "countdown-timer done" : "countdown-timer"} aria-label="Countdown timer">
             <Timer size={17} aria-hidden />
             <strong>{countdownLabel}</strong>
@@ -945,58 +1023,102 @@ export default function App() {
               <RotateCcw size={15} aria-hidden />
             </button>
           </div>
-          <span className="connection-status">
-            <span className="status-dot" aria-hidden />
-            {status}
-          </span>
-          <details className="header-actions-menu">
-            <summary aria-label="Open room actions">
+
+          <div className="avatar-stack" aria-label="Participants">
+            {room.participants.map((participant) => (
+              <span
+                className="avatar-chip"
+                key={participant.id}
+                style={{ backgroundColor: participant.color }}
+                title={participant.name}
+              >
+                {participant.name.charAt(0).toUpperCase()}
+              </span>
+            ))}
+          </div>
+
+          <button className="share-button" onClick={copyRoomCode} type="button">
+            <Copy size={15} aria-hidden />
+            Share
+          </button>
+
+          <div className="header-actions-menu">
+            <button
+              aria-expanded={isActionsMenuOpen}
+              aria-label="Open room actions"
+              className="icon-only-button"
+              onClick={toggleActionsMenu}
+              type="button"
+            >
               <MoreHorizontal size={18} aria-hidden />
-              Actions
-            </summary>
-            <div className="header-menu-list">
-              <button onClick={copyRoomCode} type="button">
-                <Copy size={17} aria-hidden />
-                Copy invite
-              </button>
-              <button onClick={exportCanvas} type="button">
-                <Download size={17} aria-hidden />
-                Export PNG
-              </button>
-              <button onClick={() => setIsShortcutsOpen(true)} type="button">
-                <HelpCircle size={17} aria-hidden />
-                Shortcuts
-              </button>
-              <button
-                onClick={() => setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"))}
-                type="button"
-              >
-                {theme === "dark" ? <Sun size={17} aria-hidden /> : <Moon size={17} aria-hidden />}
-                {theme === "dark" ? "Light mode" : "Dark mode"}
-              </button>
-              <button
-                className="danger-menu-item"
-                onClick={() => {
-                  replaceRoomInUrl();
-                  setRoom(null);
-                }}
-                type="button"
-              >
-                <LogOut size={17} aria-hidden />
-                Leave room
-              </button>
-            </div>
-          </details>
+            </button>
+            {isActionsMenuOpen ? (
+              <div className="header-menu-list">
+                <button
+                  onClick={() => {
+                    copyRoomCode();
+                    setIsActionsMenuOpen(false);
+                  }}
+                  type="button"
+                >
+                  <Copy size={17} aria-hidden />
+                  Copy invite
+                </button>
+                <button
+                  onClick={() => {
+                    exportCanvas();
+                    setIsActionsMenuOpen(false);
+                  }}
+                  type="button"
+                >
+                  <Download size={17} aria-hidden />
+                  Export PNG
+                </button>
+                <button onClick={toggleRoomSettings} type="button">
+                  <SlidersHorizontal size={17} aria-hidden />
+                  Room settings
+                </button>
+                <button
+                  onClick={() => {
+                    setIsShortcutsOpen(true);
+                    setIsActionsMenuOpen(false);
+                  }}
+                  type="button"
+                >
+                  <HelpCircle size={17} aria-hidden />
+                  Shortcuts
+                </button>
+                <button
+                  onClick={() => setTheme((currentTheme) => (currentTheme === "dark" ? "light" : "dark"))}
+                  type="button"
+                >
+                  {theme === "dark" ? <Sun size={17} aria-hidden /> : <Moon size={17} aria-hidden />}
+                  {theme === "dark" ? "Light mode" : "Dark mode"}
+                </button>
+                <button
+                  className="danger-menu-item"
+                  onClick={() => {
+                    replaceRoomInUrl();
+                    setRoom(null);
+                  }}
+                  type="button"
+                >
+                  <LogOut size={17} aria-hidden />
+                  Leave room
+                </button>
+              </div>
+            ) : null}
+            {isRoomSettingsOpen ? (
+              <RoomControlPanel
+                isHost={isHost}
+                onClose={() => setIsRoomSettingsOpen(false)}
+                onUpdateSettings={updateRoomSettings}
+                permissions={room.permissions}
+              />
+            ) : null}
+          </div>
         </div>
       </header>
-
-      <RoomControlPanel
-        currentRole={currentRole}
-        isHost={isHost}
-        onUpdateSettings={updateRoomSettings}
-        permissions={room.permissions}
-        roomTitle={room.roomTitle}
-      />
 
       <PageStrip
         activePageId={activePageId}
@@ -1013,20 +1135,6 @@ export default function App() {
       />
 
       <section className="workspace">
-        <ToolBar
-          boardTemplate={boardTemplate}
-          canRedo={canRedo}
-          canUndo={canUndo}
-          disabled={!canEditBoard}
-          onBoardTemplateChange={changeBoardTemplate}
-          onClear={clearCanvas}
-          onImportImage={() => imageInputRef.current?.click()}
-          onRedo={redoStroke}
-          onSettingsChange={setSettings}
-          onTextToolRequest={() => setTextRequestId((requestId) => requestId + 1)}
-          onUndo={undoLastStroke}
-          settings={settings}
-        />
         <CanvasStage
           canEdit={canEditBoard}
           onStrokeChange={handleStrokeChange}
@@ -1041,6 +1149,20 @@ export default function App() {
           strokes={activePageStrokes}
           textRequestId={textRequestId}
           userId={user.id}
+        />
+        <ToolBar
+          boardTemplate={boardTemplate}
+          canRedo={canRedo}
+          canUndo={canUndo}
+          disabled={!canEditBoard}
+          onBoardTemplateChange={changeBoardTemplate}
+          onClear={clearCanvas}
+          onImportImage={() => imageInputRef.current?.click()}
+          onRedo={redoStroke}
+          onSettingsChange={setSettings}
+          onTextToolRequest={() => setTextRequestId((requestId) => requestId + 1)}
+          onUndo={undoLastStroke}
+          settings={settings}
         />
         <RightSidebar
           activePageId={activePageId}

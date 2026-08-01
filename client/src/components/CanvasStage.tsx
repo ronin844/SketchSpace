@@ -146,8 +146,14 @@ function drawStroke(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement
   context.lineCap = "round";
   context.lineJoin = "round";
   context.lineWidth = stroke.size * (canvas.width / canvas.clientWidth);
-  context.strokeStyle = stroke.tool === "eraser" ? "#ffffff" : stroke.color;
-  context.globalCompositeOperation = "source-over";
+
+  if (stroke.tool === "eraser") {
+    context.globalCompositeOperation = "destination-out";
+    context.strokeStyle = "rgba(0, 0, 0, 1)";
+  } else {
+    context.globalCompositeOperation = "source-over";
+    context.strokeStyle = stroke.color;
+  }
 
   const firstPoint = stroke.points[0];
   const lastPoint = stroke.points[stroke.points.length - 1];
@@ -342,6 +348,7 @@ export function CanvasStage({
   onTextSizeChange
 }: CanvasStageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeStrokeRef = useRef<Stroke | null>(null);
   const movingStrokeRef = useRef<{ stroke: Stroke; lastPoint: Point } | null>(null);
   const resizingStrokeRef = useRef<{ stroke: Stroke; handle: ResizeHandle } | null>(null);
@@ -369,22 +376,21 @@ export function CanvasStage({
 
   useEffect(() => {
     const canvas = canvasRef.current;
+    const backgroundCanvas = backgroundCanvasRef.current;
 
-    if (!canvas) {
+    if (!canvas || !backgroundCanvas) {
       return;
     }
 
     const resizeCanvas = () => {
       const rect = canvas.getBoundingClientRect();
       const scale = window.devicePixelRatio || 1;
-      canvas.width = Math.floor(rect.width * scale);
-      canvas.height = Math.floor(rect.height * scale);
-      const context = canvas.getContext("2d");
-
-      if (!context) {
-        return;
-      }
-
+      const width = Math.floor(rect.width * scale);
+      const height = Math.floor(rect.height * scale);
+      canvas.width = width;
+      canvas.height = height;
+      backgroundCanvas.width = width;
+      backgroundCanvas.height = height;
       setCanvasVersion((version) => version + 1);
     };
 
@@ -396,6 +402,17 @@ export function CanvasStage({
   }, []);
 
   useEffect(() => {
+    const backgroundCanvas = backgroundCanvasRef.current;
+    const context = backgroundCanvas?.getContext("2d");
+
+    if (!backgroundCanvas || !context) {
+      return;
+    }
+
+    drawBoardTemplate(context, backgroundCanvas.width, backgroundCanvas.height, boardTemplate);
+  }, [boardTemplate, canvasVersion]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
 
@@ -403,9 +420,12 @@ export function CanvasStage({
       return;
     }
 
-    drawBoardTemplate(context, canvas.width, canvas.height, boardTemplate);
+    // The strokes canvas stays transparent so eraser strokes (drawn with
+    // destination-out compositing) punch real holes that reveal the
+    // background canvas underneath, instead of painting over it.
+    context.clearRect(0, 0, canvas.width, canvas.height);
     strokes.forEach((stroke) => drawStroke(context, canvas, stroke));
-  }, [strokes, boardTemplate, canvasVersion]);
+  }, [strokes, canvasVersion]);
 
   useEffect(() => {
     if (textDraft) {
@@ -687,6 +707,7 @@ export function CanvasStage({
 
   return (
     <div className="canvas-wrap">
+      <canvas aria-hidden className="background-canvas" ref={backgroundCanvasRef} />
       <canvas
         aria-label="Shared drawing canvas"
         className={canvasClassName}

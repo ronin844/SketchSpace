@@ -1,105 +1,51 @@
-import { Lock, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import type { RoomPermissions, UserRole } from "../types";
+import { Lock } from "lucide-react";
+import type { RoomPermissions } from "../types";
 
 type RoomControlPanelProps = {
-  currentRole: UserRole;
   isHost: boolean;
-  onUpdateSettings: (updates: { roomTitle?: string; permissions?: Partial<RoomPermissions> }) => void;
+  onClose: () => void;
+  onUpdateSettings: (updates: { permissions?: Partial<RoomPermissions> }) => void;
   permissions: RoomPermissions;
-  roomTitle: string;
 };
 
-const roleLabels: Record<UserRole, string> = {
-  host: "Owner",
-  editor: "Editor",
-  viewer: "Viewer"
-};
+export function RoomControlPanel({ isHost, onClose, onUpdateSettings, permissions }: RoomControlPanelProps) {
+  const rows: Array<{ icon?: typeof Lock; key: keyof RoomPermissions; label: string }> = [
+    { key: "studentsCanDraw", label: "Viewer editing" },
+    { key: "chatMuted", label: "Mute viewer chat" },
+    { key: "raiseHandEnabled", label: "Request attention" },
+    { key: "followTeacherView", label: "Follow presenter" },
+    { key: "roomLocked", label: "Lock room", icon: Lock }
+  ];
 
-export function RoomControlPanel({
-  currentRole,
-  isHost,
-  onUpdateSettings,
-  permissions,
-  roomTitle
-}: RoomControlPanelProps) {
   return (
-    <section className="room-control-panel" aria-label="Room controls">
-      <div className="room-title-field">
-        <label htmlFor="room-title">Board name</label>
-        <input
-          disabled={!isHost}
-          id="room-title"
-          maxLength={64}
-          onBlur={(event) => onUpdateSettings({ roomTitle: event.target.value })}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            }
-          }}
-          placeholder="Untitled Board"
-          defaultValue={roomTitle}
-        />
-      </div>
+    <section aria-label="Room settings" className="room-settings-popover">
+      <p className="room-settings-title">Room settings</p>
+      {rows.map((row) => {
+        const Icon = row.icon;
 
-      <div className="role-summary" aria-label="Your role">
-        <ShieldCheck size={18} aria-hidden />
-        <span>{roleLabels[currentRole]}</span>
+        return (
+          <label className="room-settings-row" key={row.key}>
+            <span>
+              {Icon ? <Icon size={13} aria-hidden /> : null}
+              {row.label}
+            </span>
+            <span className="rb-switch">
+              <input
+                checked={permissions[row.key]}
+                disabled={!isHost}
+                onChange={(event) => onUpdateSettings({ permissions: { [row.key]: event.target.checked } })}
+                type="checkbox"
+              />
+              <span aria-hidden className="rb-switch-track" />
+            </span>
+          </label>
+        );
+      })}
+      <div className="room-settings-footer">
+        <button onClick={onClose} type="button">
+          Close
+        </button>
       </div>
-
-      <details className="settings-dropdown">
-        <summary aria-label="Open room settings">
-          <SlidersHorizontal size={17} aria-hidden />
-          Room settings
-        </summary>
-        <div className="permission-grid" aria-label="Room permissions">
-          <label>
-            <input
-              checked={permissions.studentsCanDraw}
-              disabled={!isHost}
-              onChange={(event) => onUpdateSettings({ permissions: { studentsCanDraw: event.target.checked } })}
-              type="checkbox"
-            />
-            Viewer editing
-          </label>
-          <label>
-            <input
-              checked={permissions.chatMuted}
-              disabled={!isHost}
-              onChange={(event) => onUpdateSettings({ permissions: { chatMuted: event.target.checked } })}
-              type="checkbox"
-            />
-            Mute viewer chat
-          </label>
-          <label>
-            <input
-              checked={permissions.raiseHandEnabled}
-              disabled={!isHost}
-              onChange={(event) => onUpdateSettings({ permissions: { raiseHandEnabled: event.target.checked } })}
-              type="checkbox"
-            />
-            Request attention
-          </label>
-          <label>
-            <input
-              checked={permissions.followTeacherView}
-              disabled={!isHost}
-              onChange={(event) => onUpdateSettings({ permissions: { followTeacherView: event.target.checked } })}
-              type="checkbox"
-            />
-            Follow presenter view
-          </label>
-          <label>
-            <input
-              checked={permissions.roomLocked}
-              disabled={!isHost}
-              onChange={(event) => onUpdateSettings({ permissions: { roomLocked: event.target.checked } })}
-              type="checkbox"
-            />
-            <Lock size={14} aria-hidden />
-            Lock room
-          </label>
-        </div>
-      </details>
     </section>
   );
 }

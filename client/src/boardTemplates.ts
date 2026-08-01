@@ -14,10 +14,21 @@ export function drawBoardTemplate(
   template: BoardTemplate
 ) {
   context.save();
-  context.fillStyle = "#ffffff";
+  context.fillStyle = "#F3F0EE";
   context.fillRect(0, 0, width, height);
 
   if (template === "plain") {
+    const spacing = 24;
+    context.fillStyle = "rgba(20, 20, 19, 0.16)";
+
+    for (let x = spacing; x < width; x += spacing) {
+      for (let y = spacing; y < height; y += spacing) {
+        context.beginPath();
+        context.arc(x, y, 1.3, 0, Math.PI * 2);
+        context.fill();
+      }
+    }
+
     context.restore();
     return;
   }
